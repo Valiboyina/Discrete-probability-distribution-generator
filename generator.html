@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Discrete Probability Distribution Simulator</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #181818;
+            color: #e0e0e0;
+            margin: 0;
+            padding: 10px;
+        }
+        .container {
+            max-width: 700px;
+            margin: auto;
+            background-color: #2c2c2c;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+        }
+        h1 {
+            color: #f1f1f1;
+            text-align: center;
+            margin-bottom: 15px;
+        }
+        p {
+            text-align: center;
+            font-size: 1rem;
+            color: #bbb;
+            margin-bottom: 15px;
+        }
+        .input-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        label {
+            font-size: 1rem;
+            margin-bottom: 5px;
+            color: #e0e0e0;
+        }
+        input[type="number"] {
+            padding: 8px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            border: 1px solid #555;
+            width: 70%;
+            font-size: 1rem;
+            background-color: #333;
+            color: #fff;
+        }
+        input[type="number"]:focus {
+            border-color: #007bff;
+            outline: none;
+        }
+        button {
+            padding: 8px 15px;
+            border-radius: 4px;
+            background-color: #007bff;
+            color: white;
+            font-size: 1rem;
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        canvas {
+            margin-top: 20px;
+            display: block;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .results {
+            margin-top: 20px;
+            text-align: center;
+            font-size: 1rem;
+            color: #e0e0e0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Discrete Probability Distribution Simulator</h1>
+        <p>Enter the number of samples and intervals to simulate the probability distribution.</p>
+        <div class="input-container">
+            <div>
+                <label for="numSamples">Number of Samples:</label>
+                <input type="number" id="numSamples" placeholder="Enter number of samples" min="1">
+            </div>
+            <div>
+                <label for="numIntervals">Number of Intervals:</label>
+                <input type="number" id="numIntervals" placeholder="Enter number of intervals" min="1">
+            </div>
+            <button onclick="generateAndSimulate()">Generate Simulation</button>
+        </div>
+
+        <canvas id="convergence-chart" width="600" height="300"></canvas>
+        
+        <div id="results" class="results"></div>
+    </div>
+
+    <script>
+        function generateAndSimulate() {
+            const numSamples = parseInt(document.getElementById("numSamples").value);
+            const numIntervals = parseInt(document.getElementById("numIntervals").value);
+
+            if (isNaN(numSamples) || isNaN(numIntervals) || numSamples <= 0 || numIntervals <= 0) {
+                alert("Please enter valid positive integers for samples and intervals.");
+                return;
+            }
+
+            // Generate random probabilities
+            const probabilities = [];
+            let total = 0;
+
+            for (let i = 0; i < numIntervals; i++) {
+                const rand = Math.random();
+                probabilities.push(rand);
+                total += rand;
+            }
+
+            probabilities.forEach((_, i) => probabilities[i] /= total); // Normalize to sum up to 1
+            const values = Array.from({ length: numIntervals }, (_, i) => i + 1); // Values: 1, 2, 3, ...
+
+            // Calculate theoretical mean and variance
+            const theoreticalMean = values.reduce((sum, val, i) => sum + val * probabilities[i], 0);
+            const theoreticalVariance = values.reduce((sum, val, i) => sum + probabilities[i] * Math.pow(val - theoreticalMean, 2), 0);
+
+            // Simulate for different sample sizes
+            const sampleSizes = [10, 100, 1000, 5000];
+            const empiricalDistributions = [];
+            const empiricalMeans = [];
+            const empiricalVariances = [];
+
+            for (let n of sampleSizes) {
+                const samples = [];
+                for (let i = 0; i < n; i++) {
+                    samples.push(generateRandomSample(values, probabilities));
+                }
+
+                // Calculate empirical distribution
+                const freqMap = {};
+                samples.forEach(val => freqMap[val] = (freqMap[val] || 0) + 1);
+                const empirical = values.map(val => (freqMap[val] || 0) / n);
+                empiricalDistributions.push(empirical);
+
+                // Calculate mean and variance using Welford's algorithm
+                let mean = 0, variance = 0;
+                samples.forEach((x, i) => {
+                    const delta = x - mean;
+                    mean += delta / (i + 1);
+                    variance += delta * (x - mean);
+                });
+
+                empiricalMeans.push(mean);
+                empiricalVariances.push(variance / n);
+            }
+
+            // Display results
+            const results = document.getElementById("results");
+            results.innerHTML = `
+                <b>Theoretical Mean:</b> ${theoreticalMean.toFixed(4)}<br>
+                <b>Theoretical Variance:</b> ${theoreticalVariance.toFixed(4)}<br>
+                <b>Empirical Means:</b> ${empiricalMeans.map(m => m.toFixed(4)).join(", ")}<br>
+                <b>Empirical Variances:</b> ${empiricalVariances.map(v => v.toFixed(4)).join(", ")}<br>
+            `;
+
+            // Plot convergence
+            plotConvergence(values, probabilities, sampleSizes, empiricalDistributions);
+        }
+
+        function generateRandomSample(values, probabilities) {
+            const r = Math.random();
+            let cumulative = 0;
+            for (let i = 0; i < probabilities.length; i++) {
+                cumulative += probabilities[i];
+                if (r <= cumulative) {
+                    return values[i];
+                }
+            }
+        }
+
+        function plotConvergence(values, probabilities, sampleSizes, empiricalDistributions) {
+            const ctx = document.getElementById("convergence-chart").getContext("2d");
+
+            // Define different colors for each sample size
+            const colors = [
+                'rgba(255, 99, 132, 0.5)',  // Sample size 10
+                'rgba(54, 162, 235, 0.5)',  // Sample size 100
+                'rgba(75, 192, 192, 0.5)',  // Sample size 1000
+                'rgba(153, 102, 255, 0.5)'  // Sample size 5000
+            ];
+
+            const datasets = sampleSizes.map((n, index) => ({
+                label: `Sample Size: ${n}`,
+                data: empiricalDistributions[index],
+                backgroundColor: colors[index],  // Assign color based on index
+                borderColor: colors[index].replace('0.5', '1'),  // Border color (same as background, full opacity)
+                borderWidth: 1,
+            }));
+
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: values,
+                    datasets: datasets,
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Convergence of Empirical Distribution to Theoretical Distribution'
+                        }
+                    },
+                    scales: {
+                        x: { 
+                            title: { 
+                                display: true, 
+                                text: 'Values' 
+                            },
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.2)',  // White gridlines for the x-axis
+                            }
+                        },
+                        y: {
+                            title: { 
+                                display: true, 
+                                text: 'Probability' 
+                            },
+                            beginAtZero: true,
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.2)',  // White gridlines for the y-axis
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
